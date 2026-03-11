@@ -132,9 +132,15 @@ async function startSharing() {
       });
     });
 
-    // 5. Produce the video track
+    // 5. Produce the video track (prefer VP8 for max compatibility)
+    const codecOptions = [];
+    const codec = device.rtpCapabilities.codecs.find(
+      (c) => c.mimeType.toLowerCase() === 'video/vp8'
+    );
+    
     producer = await producerTransport.produce({
       track: stream.getVideoTracks()[0],
+      ...(codec ? { codec } : {}),
     });
 
     // 6. Update UI
