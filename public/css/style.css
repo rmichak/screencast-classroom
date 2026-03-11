@@ -327,6 +327,26 @@ body {
   display: block;
 }
 
+/* ── Auth Box ────────────────────────────────────── */
+.auth-box {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 2.5rem 2rem;
+  max-width: 400px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.auth-icon {
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+}
+
+#authPanel.hidden {
+  display: none;
+}
+
 /* ── Responsive ──────────────────────────────────── */
 @media (max-width: 600px) {
   .room-code {

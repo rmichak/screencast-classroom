@@ -1,21 +1,69 @@
 /* ── Presenter Logic ─────────────────────────────── */
+// mediasoup-client is loaded via local bundle in the HTML
+
 const socket = io();
 let stream = null;
 let producerTransport = null;
 let producer = null;
 let device = null;
 let roomCode = null;
+let authToken = null;
 
-// Load mediasoup-client from CDN
-const script = document.createElement('script');
-script.src = 'https://cdn.jsdelivr.net/npm/mediasoup-client@3.7.4/lib/mediasoup-client.min.js';
-script.onload = () => console.log('mediasoup-client loaded');
-document.head.appendChild(script);
+// Check if already authed (sessionStorage survives page refresh)
+const savedToken = sessionStorage.getItem('presenterToken');
+if (savedToken) {
+  authToken = savedToken;
+  document.getElementById('authPanel').classList.add('hidden');
+  document.getElementById('startPanel').classList.remove('hidden');
+}
+
+// Listen for Enter key on password input
+document.getElementById('passwordInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') authenticate();
+});
 
 // Listen for viewer count
 socket.on('viewerCount', (count) => {
   document.getElementById('viewerCount').textContent = count;
 });
+
+async function authenticate() {
+  const password = document.getElementById('passwordInput').value;
+  const errorEl = document.getElementById('authError');
+
+  if (!password) {
+    errorEl.textContent = 'Enter a password';
+    errorEl.classList.add('show');
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    });
+
+    const data = await res.json();
+
+    if (data.success) {
+      authToken = data.token;
+      sessionStorage.setItem('presenterToken', authToken);
+      document.getElementById('authPanel').classList.add('hidden');
+      document.getElementById('startPanel').classList.remove('hidden');
+      errorEl.classList.remove('show');
+    } else {
+      errorEl.textContent = 'Wrong password';
+      errorEl.classList.add('show');
+      document.getElementById('passwordInput').value = '';
+      document.getElementById('passwordInput').focus();
+      setTimeout(() => errorEl.classList.remove('show'), 3000);
+    }
+  } catch (err) {
+    errorEl.textContent = 'Connection error';
+    errorEl.classList.add('show');
+  }
+}
 
 async function startSharing() {
   try {
@@ -36,11 +84,23 @@ async function startSharing() {
     // Show preview
     document.getElementById('preview').srcObject = stream;
 
-    // 2. Create room on server
+    // 2. Create room on server (with auth token)
     const { code, error } = await new Promise((resolve) =>
-      socket.emit('createRoom', resolve)
+      socket.emit('createRoom', { token: authToken }, resolve)
     );
-    if (error) throw new Error(error);
+    if (error) {
+      if (error === 'Unauthorized') {
+        // Token expired, go back to login
+        sessionStorage.removeItem('presenterToken');
+        document.getElementById('startPanel').classList.add('hidden');
+        document.getElementById('authPanel').classList.remove('hidden');
+        stream.getTracks().forEach((t) => t.stop());
+        stream = null;
+        alert('Session expired. Please log in again.');
+        return;
+      }
+      throw new Error(error);
+    }
     roomCode = code;
 
     // 3. Create mediasoup device
@@ -92,7 +152,7 @@ function updateUI(code) {
   document.getElementById('sharingPanel').classList.add('active');
   document.getElementById('roomCode').textContent = code;
 
-  // Build viewer URL
+  // Build viewer URL (use the current origin so it works through any proxy)
   const viewerUrl = `${location.origin}/view/${code}`;
   const linkEl = document.getElementById('viewerLink');
   linkEl.href = viewerUrl;

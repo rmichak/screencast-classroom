@@ -3,14 +3,9 @@ const socket = io();
 let device = null;
 let consumerTransport = null;
 
-// Load mediasoup-client from CDN
-const script = document.createElement('script');
-script.src = 'https://cdn.jsdelivr.net/npm/mediasoup-client@3.7.4/lib/mediasoup-client.min.js';
-script.onload = () => {
-  console.log('mediasoup-client loaded');
-  init();
-};
-document.head.appendChild(script);
+// mediasoup-client is loaded via local bundle in the HTML
+// Init on page load
+document.addEventListener('DOMContentLoaded', init);
 
 function init() {
   // Check URL for room code

@@ -13,8 +13,23 @@
     <div class="logo">ScreenCast <span>Classroom</span></div>
     <p class="subtitle">Share your screen with your students instantly</p>
 
-    <!-- Start Panel -->
-    <div class="start-panel" id="startPanel">
+    <!-- Auth Panel -->
+    <div id="authPanel">
+      <div class="auth-box">
+        <div class="auth-icon">🔐</div>
+        <h3 style="margin-bottom: 0.5rem; color: var(--text);">Presenter Login</h3>
+        <p style="color: var(--muted); font-size: 0.85rem; margin-bottom: 1.5rem;">Enter your presenter password to start sharing</p>
+        <input type="password" class="code-input" id="passwordInput" placeholder="••••••" 
+               style="font-size: 1.5rem; letter-spacing: 0.1em; width: 280px;" autofocus>
+        <button class="btn btn-primary join-btn" onclick="authenticate()" style="margin-top: 1rem;">
+          <span class="btn-icon">🔓</span> Login
+        </button>
+        <div class="error-msg" id="authError"></div>
+      </div>
+    </div>
+
+    <!-- Start Panel (hidden until authed) -->
+    <div class="start-panel hidden" id="startPanel">
       <button class="btn btn-primary" id="shareBtn" onclick="startSharing()">
         <span class="btn-icon">🖥️</span> Share My Screen
       </button>
@@ -55,6 +70,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/mediasoup-client.bundle.js"></script>
   <script src="/js/presenter.js"></script>
 </body>
 </html>

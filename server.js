@@ -11,6 +11,7 @@ const path = require('path');
 const HTTP_PORT = 3100;
 const HTTPS_PORT = 3101;
 const ANNOUNCED_IP = process.env.ANNOUNCED_IP || getLocalIp();
+const PRESENTER_PASSWORD = process.env.PRESENTER_PASSWORD || 'teach2026';
 
 const mediaCodecs = [
   {
@@ -63,14 +64,34 @@ function getLocalIp() {
 
 // ── Express ─────────────────────────────────────────────
 const app = express();
+app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Route: presenter page
+// Auth tokens (in-memory, short-lived)
+const authTokens = new Set();
+
+// Route: presenter auth
+app.post('/api/auth', (req, res) => {
+  const { password } = req.body;
+  if (password === PRESENTER_PASSWORD) {
+    const token = require('crypto').randomBytes(32).toString('hex');
+    authTokens.add(token);
+    // Token expires in 12 hours
+    setTimeout(() => authTokens.delete(token), 12 * 60 * 60 * 1000);
+    console.log(`🔐 Presenter authenticated`);
+    res.json({ success: true, token });
+  } else {
+    console.log(`🚫 Failed auth attempt`);
+    res.status(401).json({ success: false, error: 'Wrong password' });
+  }
+});
+
+// Route: presenter page (always served, auth checked client-side)
 app.get('/present', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'presenter.html'));
 });
 
-// Route: viewer page
+// Route: viewer page (no auth needed)
 app.get('/view/:code?', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'viewer.html'));
 });
@@ -152,9 +173,12 @@ async function createWebRtcTransport(router) {
 io.on('connection', (socket) => {
   console.log(`🔌 Client connected: ${socket.id}`);
 
-  // ── Presenter: create room ──
-  socket.on('createRoom', async (callback) => {
+  // ── Presenter: create room (requires auth token) ──
+  socket.on('createRoom', async ({ token }, callback) => {
     try {
+      if (!token || !authTokens.has(token)) {
+        return callback({ error: 'Unauthorized' });
+      }
       const code = generateRoomCode();
       const room = await createRoom(code);
       room.presenter = socket.id;
