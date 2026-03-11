@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Screen Share — Viewer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <!-- Join Form (if no code in URL) -->
+  <div class="join-container" id="joinContainer" style="display:none;">
+    <h1>🖥️ Join Screen Share</h1>
+    <p class="subtitle" style="margin-bottom:1.5rem;">Enter the room code shown on the projector</p>
+    <input type="text" class="code-input" id="codeInput" maxlength="4" placeholder="CODE" autocomplete="off" autofocus>
+    <button class="btn btn-primary join-btn" onclick="joinWithCode()">
+      <span class="btn-icon">👀</span> Join
+    </button>
+    <div class="error-msg" id="errorMsg"></div>
+  </div>
+
+  <!-- Viewer Screen -->
+  <div class="viewer-container" id="viewerContainer" style="display:none;">
+    <!-- Status messages -->
+    <div class="viewer-status" id="waitingStatus" style="display:none;">
+      <div class="icon">⏳</div>
+      <h2>Waiting for presenter...</h2>
+      <p>The instructor hasn't started sharing yet. Hang tight!</p>
+    </div>
+
+    <div class="viewer-status" id="endedStatus" style="display:none;">
+      <div class="icon">👋</div>
+      <h2>Session ended</h2>
+      <p>The presenter has stopped sharing their screen.</p>
+    </div>
+
+    <!-- Video stream -->
+    <video id="remoteVideo" autoplay playsinline style="display:none;"></video>
+    <div class="fullscreen-hint" id="fullscreenHint">Tap anywhere to toggle fullscreen</div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/viewer.js"></script>
+</body>
+</html>

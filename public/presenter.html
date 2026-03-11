@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Screen Share — Presenter</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="presenter-container">
+    <div class="logo">ScreenCast <span>Classroom</span></div>
+    <p class="subtitle">Share your screen with your students instantly</p>
+
+    <!-- Start Panel -->
+    <div class="start-panel" id="startPanel">
+      <button class="btn btn-primary" id="shareBtn" onclick="startSharing()">
+        <span class="btn-icon">🖥️</span> Share My Screen
+      </button>
+    </div>
+
+    <!-- Sharing Active Panel -->
+    <div class="sharing-panel" id="sharingPanel">
+      <div class="room-code-display">
+        <div class="room-code-label">Room Code</div>
+        <div class="room-code" id="roomCode">----</div>
+      </div>
+
+      <div class="qr-container" id="qrContainer">
+        <canvas id="qrCanvas"></canvas>
+      </div>
+
+      <div class="viewer-url">
+        Students: open <a id="viewerLink" href="#" target="_blank"></a>
+      </div>
+
+      <div class="stats-bar">
+        <div class="stat">
+          <div class="stat-value" id="viewerCount">0</div>
+          <div class="stat-label">Students Viewing</div>
+        </div>
+      </div>
+
+      <div class="preview-container">
+        <div class="preview-label">Your Screen Preview</div>
+        <video id="preview" autoplay muted playsinline></video>
+      </div>
+
+      <button class="btn btn-danger" onclick="stopSharing()">
+        <span class="btn-icon">⏹</span> Stop Sharing
+      </button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/presenter.js"></script>
+</body>
+</html>
