@@ -174,7 +174,20 @@ async function createRoom(code) {
 
 async function createWebRtcTransport(router) {
   const transport = await router.createWebRtcTransport({
-    listenIps: [{ ip: '0.0.0.0', announcedIp: ANNOUNCED_IP }],
+    listenInfos: [
+      {
+        protocol: 'udp',
+        ip: '0.0.0.0',
+        announcedAddress: ANNOUNCED_IP,
+        portRange: { min: 40000, max: 40100 },
+      },
+      {
+        protocol: 'tcp',
+        ip: '0.0.0.0',
+        announcedAddress: ANNOUNCED_IP,
+        portRange: { min: 40000, max: 40100 },
+      },
+    ],
     enableUdp: true,
     enableTcp: true,
     preferUdp: true,

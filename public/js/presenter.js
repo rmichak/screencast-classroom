@@ -1,15 +1,38 @@
-/* ── Presenter Logic ─────────────────────────────── */
-// mediasoup-client is loaded via local bundle in the HTML
-
+/* ── Presenter Logic (Plain WebRTC P2P) ─────────── */
 const socket = io();
 let stream = null;
-let producerTransport = null;
-let producer = null;
-let device = null;
-let roomCode = null;
 let authToken = null;
+const peerConnections = new Map(); // viewerId -> RTCPeerConnection
 
-// Check if already authed (sessionStorage survives page refresh)
+// Free TURN/STUN servers for NAT traversal
+const iceServers = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun.relay.metered.ca:80' },
+  {
+    urls: 'turn:global.relay.metered.ca:80',
+    username: 'b4be29935fda005de7b3c8e4',
+    credential: 'o4MgYqoqp4VOMiDy',
+  },
+  {
+    urls: 'turn:global.relay.metered.ca:80?transport=tcp',
+    username: 'b4be29935fda005de7b3c8e4',
+    credential: 'o4MgYqoqp4VOMiDy',
+  },
+  {
+    urls: 'turn:global.relay.metered.ca:443',
+    username: 'b4be29935fda005de7b3c8e4',
+    credential: 'o4MgYqoqp4VOMiDy',
+  },
+  {
+    urls: 'turns:global.relay.metered.ca:443?transport=tcp',
+    username: 'b4be29935fda005de7b3c8e4',
+    credential: 'o4MgYqoqp4VOMiDy',
+  },
+];
+
+// Check saved auth
 const savedToken = sessionStorage.getItem('presenterToken');
 if (savedToken) {
   authToken = savedToken;
@@ -17,16 +40,49 @@ if (savedToken) {
   document.getElementById('startPanel').classList.remove('hidden');
 }
 
-// Listen for Enter key on password input
 document.getElementById('passwordInput').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') authenticate();
 });
 
-// Listen for viewer count
+// ── Socket events ───────────────────────────────────────
 socket.on('viewerCount', (count) => {
   document.getElementById('viewerCount').textContent = count;
 });
 
+// New viewer joined — create peer connection and send offer
+socket.on('viewerJoined', async ({ viewerId }) => {
+  if (!stream) return;
+  console.log(`New viewer: ${viewerId}`);
+  await createPeerConnection(viewerId);
+});
+
+// Viewer sent answer
+socket.on('answer', async ({ viewerId, answer }) => {
+  const pc = peerConnections.get(viewerId);
+  if (pc) {
+    await pc.setRemoteDescription(new RTCSessionDescription(answer));
+    console.log(`Answer set for viewer: ${viewerId}`);
+  }
+});
+
+// ICE candidate from viewer
+socket.on('iceCandidate', async ({ senderId, candidate }) => {
+  const pc = peerConnections.get(senderId);
+  if (pc && candidate) {
+    await pc.addIceCandidate(new RTCIceCandidate(candidate));
+  }
+});
+
+// Viewer left
+socket.on('viewerLeft', ({ viewerId }) => {
+  const pc = peerConnections.get(viewerId);
+  if (pc) {
+    pc.close();
+    peerConnections.delete(viewerId);
+  }
+});
+
+// ── Auth ────────────────────────────────────────────────
 async function authenticate() {
   const password = document.getElementById('passwordInput').value;
   const errorEl = document.getElementById('authError');
@@ -43,7 +99,6 @@ async function authenticate() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password }),
     });
-
     const data = await res.json();
 
     if (data.success) {
@@ -51,7 +106,6 @@ async function authenticate() {
       sessionStorage.setItem('presenterToken', authToken);
       document.getElementById('authPanel').classList.add('hidden');
       document.getElementById('startPanel').classList.remove('hidden');
-      errorEl.classList.remove('show');
     } else {
       errorEl.textContent = 'Wrong password';
       errorEl.classList.add('show');
@@ -65,32 +119,55 @@ async function authenticate() {
   }
 }
 
+// ── Peer Connection ─────────────────────────────────────
+async function createPeerConnection(viewerId) {
+  const pc = new RTCPeerConnection({ iceServers });
+  peerConnections.set(viewerId, pc);
+
+  // Add screen tracks to this connection
+  stream.getTracks().forEach((track) => {
+    pc.addTrack(track, stream);
+  });
+
+  // Send ICE candidates to viewer
+  pc.onicecandidate = (event) => {
+    if (event.candidate) {
+      socket.emit('iceCandidate', { targetId: viewerId, candidate: event.candidate });
+    }
+  };
+
+  pc.onconnectionstatechange = () => {
+    console.log(`Peer ${viewerId}: ${pc.connectionState}`);
+    if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+      pc.close();
+      peerConnections.delete(viewerId);
+    }
+  };
+
+  // Create and send offer
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  socket.emit('offer', { viewerId, offer: pc.localDescription });
+}
+
+// ── Start Sharing ───────────────────────────────────────
 async function startSharing() {
   try {
-    // 1. Get screen stream
     stream = await navigator.mediaDevices.getDisplayMedia({
-      video: {
-        cursor: 'always',
-        width: { ideal: 1920 },
-        height: { ideal: 1080 },
-        frameRate: { ideal: 30 },
-      },
+      video: { cursor: 'always', width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
       audio: false,
     });
 
-    // Handle user clicking "Stop sharing" in browser UI
     stream.getVideoTracks()[0].onended = () => stopSharing();
-
-    // Show preview
     document.getElementById('preview').srcObject = stream;
 
-    // 2. Create room on server (with auth token)
+    // Create room
     const { code, error } = await new Promise((resolve) =>
       socket.emit('createRoom', { token: authToken }, resolve)
     );
+
     if (error) {
       if (error === 'Unauthorized') {
-        // Token expired, go back to login
         sessionStorage.removeItem('presenterToken');
         document.getElementById('startPanel').classList.add('hidden');
         document.getElementById('authPanel').classList.remove('hidden');
@@ -101,97 +178,41 @@ async function startSharing() {
       }
       throw new Error(error);
     }
-    roomCode = code;
 
-    // 3. Create mediasoup device
-    device = new mediasoupClient.Device();
-    const { rtpCapabilities } = await new Promise((resolve) =>
-      socket.emit('getRtpCapabilities', resolve)
-    );
-    await device.load({ routerRtpCapabilities: rtpCapabilities });
+    // Notify server stream is ready
+    socket.emit('streamReady');
 
-    // 4. Create producer transport
-    const transportParams = await new Promise((resolve) =>
-      socket.emit('createProducerTransport', resolve)
-    );
-    if (transportParams.error) throw new Error(transportParams.error);
+    // Update UI
+    document.getElementById('startPanel').classList.add('hidden');
+    document.getElementById('sharingPanel').classList.add('active');
+    document.getElementById('roomCode').textContent = code;
 
-    producerTransport = device.createSendTransport(transportParams);
+    const viewerUrl = `${location.origin}/view/${code}`;
+    const linkEl = document.getElementById('viewerLink');
+    linkEl.href = viewerUrl;
+    linkEl.textContent = viewerUrl;
 
-    producerTransport.on('connect', ({ dtlsParameters }, callback, errback) => {
-      socket.emit('connectProducerTransport', { dtlsParameters }, (res) => {
-        if (res.error) errback(new Error(res.error));
-        else callback();
-      });
+    QRCode.toCanvas(document.getElementById('qrCanvas'), viewerUrl, {
+      width: 200, margin: 1, color: { dark: '#0a0f1a', light: '#ffffff' },
     });
-
-    producerTransport.on('produce', ({ kind, rtpParameters }, callback, errback) => {
-      socket.emit('produce', { kind, rtpParameters }, (res) => {
-        if (res.error) errback(new Error(res.error));
-        else callback({ id: res.id });
-      });
-    });
-
-    // 5. Produce the video track (prefer VP8 for max compatibility)
-    const codecOptions = [];
-    const codec = device.rtpCapabilities.codecs.find(
-      (c) => c.mimeType.toLowerCase() === 'video/vp8'
-    );
-    
-    producer = await producerTransport.produce({
-      track: stream.getVideoTracks()[0],
-      ...(codec ? { codec } : {}),
-    });
-
-    // 6. Update UI
-    updateUI(code);
 
   } catch (err) {
-    console.error('Failed to start sharing:', err);
-    if (err.name === 'NotAllowedError') return; // User cancelled
+    console.error('Failed:', err);
+    if (err.name === 'NotAllowedError') return;
     alert('Failed to start sharing: ' + err.message);
   }
 }
 
-function updateUI(code) {
-  document.getElementById('startPanel').classList.add('hidden');
-  document.getElementById('sharingPanel').classList.add('active');
-  document.getElementById('roomCode').textContent = code;
-
-  // Build viewer URL (use the current origin so it works through any proxy)
-  const viewerUrl = `${location.origin}/view/${code}`;
-  const linkEl = document.getElementById('viewerLink');
-  linkEl.href = viewerUrl;
-  linkEl.textContent = viewerUrl;
-
-  // Generate QR code
-  QRCode.toCanvas(document.getElementById('qrCanvas'), viewerUrl, {
-    width: 200,
-    margin: 1,
-    color: { dark: '#0a0f1a', light: '#ffffff' },
-  });
-}
-
 function stopSharing() {
-  // Stop all tracks
-  if (stream) {
-    stream.getTracks().forEach((t) => t.stop());
-    stream = null;
-  }
-
-  // Close producer + transport
-  if (producer) producer.close();
-  if (producerTransport) producerTransport.close();
-
-  // Disconnect socket (triggers server cleanup)
+  if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; }
+  peerConnections.forEach((pc) => pc.close());
+  peerConnections.clear();
   socket.disconnect();
 
-  // Reset UI
   document.getElementById('startPanel').classList.remove('hidden');
   document.getElementById('sharingPanel').classList.remove('active');
   document.getElementById('preview').srcObject = null;
   document.getElementById('viewerCount').textContent = '0';
 
-  // Reconnect socket for next session
   socket.connect();
 }
